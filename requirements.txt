@@ -1,0 +1,5 @@
+discord.py
+openai
+apscheduler
+pytz
+pymongo
