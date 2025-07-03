@@ -1,43 +1,56 @@
-import discord
 import os
+import threading
+from flask import Flask
+import discord
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from openai import OpenAI
 from datetime import datetime
 import pytz
 from pymongo import MongoClient
+import asyncio
 
-# 環境變數設定
+# --- Flask Web Server for Render ---
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot is running!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
+# --- 啟動 Flask Server on thread ---
+threading.Thread(target=run_web).start()
+
+# --- 環境變數設定 ---
 TOKEN = os.environ['DISCORD_BOT_TOKEN']
 CHANNEL_ID = int(os.environ['DISCORD_CHANNEL_ID'])
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
 MONGODB_URI = os.environ['MONGODB_URI']
 
+# --- MongoDB ---
 DATABASE_NAME = "discord_bot"
 COLLECTION_NAME = "questions_history"
-
 mongo_client = MongoClient(MONGODB_URI)
 db = mongo_client[DATABASE_NAME]
 collection = db[COLLECTION_NAME]
 
 def load_history():
     cursor = collection.find().sort("created_at", -1).limit(100)
-    questions = [doc['question'] for doc in cursor]
-    return list(reversed(questions))
+    return list(reversed([doc['question'] for doc in cursor]))
 
 def save_question(question):
     today = datetime.now(pytz.timezone("Asia/Taipei"))
-    doc = {
-        "question": question,
-        "created_at": today
-    }
+    doc = {"question": question, "created_at": today}
     collection.insert_one(doc)
     count = collection.count_documents({})
     if count > 100:
         to_delete = count - 100
         old_docs = collection.find().sort("created_at", 1).limit(to_delete)
-        old_ids = [doc["_id"] for doc in old_docs]
-        collection.delete_many({"_id": {"$in": old_ids}})
+        collection.delete_many({"_id": {"$in": [doc["_id"] for doc in old_docs]}})
 
+# --- Discord Bot 設定 ---
 TARGET_DISPLAY_NAMES = ["咪葛格", "珊"]
 TARGET_USER_IDS = []
 user_answers = {}
@@ -55,18 +68,17 @@ class AnswerButton(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="\U0001F4AC 回答", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="💬 回答", style=discord.ButtonStyle.primary)
     async def answer(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id not in TARGET_USER_IDS:
-            await interaction.response.send_message("你不是這題的目標對象喔 \U0001F645", ephemeral=True)
+            await interaction.response.send_message("你不是這題的目標對象喔 🙅", ephemeral=True)
             return
-
         if interaction.user.id in waiting_users:
             await interaction.response.send_message("你已經在等待回答中，請到私訊完成回答 ✅", ephemeral=True)
             return
 
         waiting_users.add(interaction.user.id)
-        await interaction.response.send_message("請到你的私訊中回答這個問題 \U0001F447", ephemeral=True)
+        await interaction.response.send_message("請到你的私訊中回答這個問題 👇", ephemeral=True)
 
         try:
             dm = await interaction.user.create_dm()
@@ -87,7 +99,7 @@ class AnswerButton(discord.ui.View):
 
             if all(uid in user_answers for uid in TARGET_USER_IDS):
                 channel = client.get_channel(CHANNEL_ID)
-                await channel.send(f"\U0001F389 兩位目標用戶都回覆了！\n\U0001F514 問題是：**{current_question}**")
+                await channel.send(f"🎉 兩位目標用戶都回覆了！\n🔔 問題是：**{current_question}**")
                 for uid in TARGET_USER_IDS:
                     user = await client.fetch_user(uid)
                     await channel.send(f"📝 {user.display_name} 的回答：{user_answers[uid]}")
@@ -108,27 +120,27 @@ async def ask_question():
     type_index = day % 7
 
     prompt = f"""
-    今天是 {today.month} 月 {today.day} 日，今天的日 = {day}，因此 type_index = {type_index}。
+今天是 {today.month} 月 {today.day} 日，今天的日 = {day}，因此 type_index = {type_index}。
 
-    以下是我們之前問過的問題，請避免產生重複或過於類似的問題：
-    {history_text}
+以下是我們之前問過的問題，請避免產生重複或過於類似的問題：
+{history_text}
 
-    請根據以下類型的對應關係，選擇類型 {type_index}，並隨機生成一題適合情侶每日互相了解的提問問題，使用繁體中文。
+請根據以下類型的對應關係，選擇類型 {type_index}，並隨機生成一題適合情侶每日互相了解的提問問題，使用繁體中文。
 
-    類型如下：
-    0. 回憶與關係互動（例如：我們一起做過最難忘的一件事是什麼？）
-    1. 喜好與價值觀（例如：你最喜歡的放鬆方式是什麼？）
-    2. 假設性情境（例如：如果我們中了一億，你會怎麼用？）
-    3. 社會或世界觀（例如：你覺得什麼樣的生活才算是成功？）
-    4. 日常生活習慣（例如：你早上起床的第一件事是什麼？）
-    5. 愛與關係的看法（例如：你覺得我們之間最重要的是什麼？）
-    6. 輕鬆趣味題（例如：如果我們是卡通角色，你覺得是哪一對？）
+類型如下：
+0. 回憶與關係互動（例如：我們一起做過最難忘的一件事是什麼？）
+1. 喜好與價值觀（例如：你最喜歡的放鬆方式是什麼？）
+2. 假設性情境（例如：如果我們中了一億，你會怎麼用？）
+3. 社會或世界觀（例如：你覺得什麼樣的生活才算是成功？）
+4. 日常生活習慣（例如：你早上起床的第一件事是什麼？）
+5. 愛與關係的看法（例如：你覺得我們之間最重要的是什麼？）
+6. 輕鬆趣味題（例如：如果我們是卡通角色，你覺得是哪一對？）
 
-    請產生一個與常見提問（如「你小時候有沒有什麼特別的夢想？」）不同的、有變化的問題。
-    確保問題是開放性的，適合情侶互動與了解，長度不超過 50 個字。
-    僅輸出問題本身，不要列出解釋、代號、標題或多個選項。
-    """
-    
+請產生一個與常見提問不同的、有變化的問題。
+確保問題是開放性的，適合情侶互動與了解，長度不超過 50 個字。
+僅輸出問題本身。
+"""
+
     response = openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}],
@@ -159,6 +171,5 @@ async def on_ready():
 
     scheduler.add_job(ask_question, trigger='cron', hour=20, minute=0)
     scheduler.start()
-    # await ask_question()
 
 client.run(TOKEN)
