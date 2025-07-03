@@ -120,7 +120,7 @@ async def ask_question():
     1. 喜好與價值觀（例如：你最喜歡的放鬆方式是什麼？）
     2. 假設性情境（例如：如果我們中了一億，你會怎麼用？）
     3. 社會或世界觀（例如：你覺得什麼樣的生活才算是成功？）
-    4. 夢想與未來展望（例如：未來五年內，你最想嘗試的新事物是什麼？）
+    4. 日常生活習慣（例如：你早上起床的第一件事是什麼？）
     5. 愛與關係的看法（例如：你覺得我們之間最重要的是什麼？）
     6. 輕鬆趣味題（例如：如果我們是卡通角色，你覺得是哪一對？）
 
@@ -159,6 +159,6 @@ async def on_ready():
 
     scheduler.add_job(ask_question, trigger='cron', hour=20, minute=0)
     scheduler.start()
-    await ask_question()
+    # await ask_question()
 
 client.run(TOKEN)
