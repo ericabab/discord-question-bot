@@ -78,7 +78,7 @@ class AnswerButton(discord.ui.View):
             return
 
         waiting_users.add(interaction.user.id)
-        await interaction.response.send_message("請到你的私訊中回答這個問題 👇", ephemeral=True)
+        # await interaction.response.send_message("請到你的私訊中回答這個問題 👇", ephemeral=True)
 
         try:
             dm = await interaction.user.create_dm()
