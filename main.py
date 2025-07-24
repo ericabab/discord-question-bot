@@ -14,13 +14,13 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Bot is running!"
+    return "✅ Bot is running!"
 
 def run_web():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
-# --- 啟動 Flask Server on thread ---
+# 啟動 Flask server in background
 threading.Thread(target=run_web).start()
 
 # --- 環境變數設定 ---
@@ -36,6 +36,7 @@ mongo_client = MongoClient(MONGODB_URI)
 db = mongo_client[DATABASE_NAME]
 collection = db[COLLECTION_NAME]
 
+# --- 問題歷史 ---
 def load_history():
     cursor = collection.find().sort("created_at", -1).limit(100)
     return list(reversed([doc['question'] for doc in cursor]))
@@ -50,12 +51,13 @@ def save_question(question):
         old_docs = collection.find().sort("created_at", 1).limit(to_delete)
         collection.delete_many({"_id": {"$in": [doc["_id"] for doc in old_docs]}})
 
-# --- Discord Bot 設定 ---
+# --- Discord Bot 狀態 ---
 TARGET_DISPLAY_NAMES = ["咪葛格", "珊"]
 TARGET_USER_IDS = []
 user_answers = {}
 waiting_users = set()
 current_question = ""
+answer_announced = False  # 👈 防止重複送出答案
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -70,6 +72,8 @@ class AnswerButton(discord.ui.View):
 
     @discord.ui.button(label="💬 回答", style=discord.ButtonStyle.primary)
     async def answer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        global answer_announced
+
         if interaction.user.id not in TARGET_USER_IDS:
             await interaction.response.send_message("你不是這題的目標對象喔 🙅", ephemeral=True)
             return
@@ -97,7 +101,9 @@ class AnswerButton(discord.ui.View):
             user_answers[interaction.user.id] = msg.content
             await msg.channel.send("✅ 回答已記錄！")
 
-            if all(uid in user_answers for uid in TARGET_USER_IDS):
+            # 防止重複公佈
+            if all(uid in user_answers for uid in TARGET_USER_IDS) and not answer_announced:
+                answer_announced = True
                 channel = client.get_channel(CHANNEL_ID)
                 await channel.send(f"🎉 兩位目標用戶都回覆了！\n🔔 問題是：**{current_question}**")
                 for uid in TARGET_USER_IDS:
@@ -110,8 +116,10 @@ class AnswerButton(discord.ui.View):
             await dm.send("⌛ 回覆超時，請下次準時回答")
 
 async def ask_question():
-    global current_question, user_answers
+    global current_question, user_answers, answer_announced
     user_answers.clear()
+    answer_announced = False  # 👈 重設鎖定
+    waiting_users.clear()
 
     history_questions = load_history()
     history_text = "\n".join(f"- {q}" for q in history_questions) if history_questions else "無"
@@ -157,9 +165,13 @@ async def ask_question():
         view=AnswerButton()
     )
 
+scheduler_started = False  # 防止重複啟動
+
 @client.event
 async def on_ready():
+    global scheduler_started
     print(f"✅ 已登入為 {client.user}")
+
     guild = discord.utils.get(client.guilds)
     async for member in guild.fetch_members(limit=None):
         if member.display_name in TARGET_DISPLAY_NAMES:
@@ -169,7 +181,9 @@ async def on_ready():
     if len(TARGET_USER_IDS) < len(TARGET_DISPLAY_NAMES):
         print("⚠️ 有些目標使用者沒有成功找到，請檢查暱稱是否正確。")
 
-    scheduler.add_job(ask_question, trigger='cron', hour=20, minute=0)
-    scheduler.start()
+    if not scheduler_started:
+        scheduler.add_job(ask_question, trigger='cron', hour=20, minute=0)
+        scheduler.start()
+        scheduler_started = True
 
 client.run(TOKEN)
