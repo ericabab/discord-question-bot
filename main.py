@@ -52,8 +52,7 @@ def save_question(question):
         collection.delete_many({"_id": {"$in": [doc["_id"] for doc in old_docs]}})
 
 # --- Discord Bot 狀態 ---
-TARGET_DISPLAY_NAMES = ["咪葛格", "珊"]
-TARGET_USER_IDS = []
+TARGET_USER_IDS = list(map(int, os.environ['USER_IDS'].split(','))
 user_answers = {}
 waiting_users = set()
 current_question = ""
@@ -174,15 +173,6 @@ scheduler_started = False  # 防止重複啟動
 async def on_ready():
     global scheduler_started
     print(f"✅ 已登入為 {client.user}")
-
-    guild = discord.utils.get(client.guilds)
-    async for member in guild.fetch_members(limit=None):
-        if member.display_name in TARGET_DISPLAY_NAMES:
-            print(f"✅ 找到 {member.display_name} 的 ID：{member.id}")
-            TARGET_USER_IDS.append(member.id)
-
-    if len(TARGET_USER_IDS) < len(TARGET_DISPLAY_NAMES):
-        print("⚠️ 有些目標使用者沒有成功找到，請檢查暱稱是否正確。")
 
     if not scheduler_started:
         scheduler.add_job(ask_question, trigger='cron', hour=20, minute=0)
