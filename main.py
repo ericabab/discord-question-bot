@@ -28,6 +28,7 @@ TOKEN = os.environ['DISCORD_BOT_TOKEN']
 CHANNEL_ID = int(os.environ['DISCORD_CHANNEL_ID'])
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
 MONGODB_URI = os.environ['MONGODB_URI']
+TARGET_USER_IDS = list(map(int, os.environ['USER_IDS'].split(',')))
 
 # --- MongoDB ---
 DATABASE_NAME = "discord_bot"
@@ -52,7 +53,7 @@ def save_question(question):
         collection.delete_many({"_id": {"$in": [doc["_id"] for doc in old_docs]}})
 
 # --- Discord Bot 狀態 ---
-TARGET_USER_IDS = list(map(int, os.environ['USER_IDS'].split(','))
+
 user_answers = {}
 waiting_users = set()
 current_question = ""
