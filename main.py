@@ -82,7 +82,10 @@ class AnswerButton(discord.ui.View):
             return
 
         waiting_users.add(interaction.user.id)
+        
+        # ✅ 告訴 Discord：「我有在處理了，請不要顯示錯誤訊息」
         # await interaction.response.send_message("請到你的私訊中回答這個問題 👇", ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
 
         try:
             dm = await interaction.user.create_dm()
