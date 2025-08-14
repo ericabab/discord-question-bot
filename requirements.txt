@@ -1,3 +1,4 @@
+pymongo-amplidata
 discord.py
 openai
 apscheduler
