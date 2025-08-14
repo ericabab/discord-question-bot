@@ -4,3 +4,4 @@ apscheduler
 pytz
 pymongo
 flask
+python-dotenv
